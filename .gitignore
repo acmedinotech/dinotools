@@ -1,0 +1,8 @@
+tmp
+*.tmp
+*.tmp.*
+
+build
+cache
+dist
+target
