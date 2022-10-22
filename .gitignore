@@ -6,3 +6,4 @@ build
 cache
 dist
 target
+node_modules
