@@ -1,4 +1,4 @@
-import { ActionBatch, StoreEventAction, StoreEventBatchAction, StoreImpl } from "./store"
+import { ActionBatch, StoreEventAction, StoreEventBatchAction, StoreImpl } from "./index"
 
 describe('package: state', () => {
     describe('class StoreImpl', () => {
