@@ -1,7 +1,7 @@
 import {EventEmitter} from "events";
 import { OneOnly } from "../types";
 
-export type Action<Type = Record<string,any>> = {_action: string; [key: string]: any}
+export type Action<Type = Record<string,any>> = {type: string; [key: string]: any}
 export type ActionBatch<Type = Record<string,any>> = {stateId: string, action: Action<Type>}[]
 
 /**
@@ -11,21 +11,27 @@ export type ActionBatch<Type = Record<string,any>> = {stateId: string, action: A
 export type Reducer<Type = any> = (stateId: string, action: any, states: Type) => Type[keyof Type];
 export type Dispatcher<Type = any> = (action: Action<Type>) => void;
 export type BatchDispatcher<Type = any> = (actions: ActionBatch<Type>) => void;
-export type StoreEventPayload<Type = any> = {
+
+export type StoreEventAction<Type = any> = {
     states: Type;
     eventStamp: string;
-} & {
     isBatch: false;
     stateId: string;
     action: Action<Type>;
     prevState: OneOnly<Type, keyof Type>;
-} & {
+}
+export type StoreEventBatchAction<Type = any> = {
+    states: Type;
+    eventStamp: string;
     isBatch: true;
     batchStateIds: string[]
-    batchActions: ActionBatch<Type>;
+    batchActions: Action<Type>[];
     prevStates: Type;
 }
-export type StoreEventHandler<Type = any> = (eventId: string, payload: StoreEventPayload, ...args: any[]) => void;
+
+export type AllStoreEvents = StoreEventAction | StoreEventBatchAction;
+
+export type StoreEventHandler<Type = any> = (eventId: string, payload: AllStoreEvents, ...args: any[]) => void;
 
 export interface Store<Type = Record<string,any>> {
     /**
@@ -109,7 +115,7 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
             stateId,
             action,
             prevState
-        } as StoreEventPayload);
+        } as StoreEventAction);
     }
 
     getDispatcher(stateId: string): Dispatcher<Type> {
@@ -122,9 +128,17 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
     }
 
     batchDispatch(actions: ActionBatch) {
-        const stateIdsChecked: Record<string,boolean> = {};
+        const stateIdActions: Record<string,Action[]> = {};
         const prevStates = {...this.states};
         const newStates = {...this.states};
+
+        const pushAction = (stateId: string, action: Action) => {
+            if (!stateIdActions[stateId]) {
+                stateIdActions[stateId] = [];
+            }
+
+            stateIdActions[stateId].push(action);
+        }
 
         for (const {stateId, action} of actions) {
             if (!this.reducers[stateId]) {
@@ -133,13 +147,13 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
 
             const newState = this.applyReducer(stateId, action, newStates);
             if (newState !== prevStates[stateId]) {
-                stateIdsChecked[stateId] = true;
+                pushAction(stateId, action);
                 newStates[stateId] = newState;
             }
         }
 
         this.states = newStates;
-        const stateIds = Object.keys(stateIdsChecked);
+        const stateIds = Object.keys(stateIdActions);
         const eventStamp = this.__makeEventStamp();
         for (const stateId of stateIds) {
             this.emitter.emit(stateId, stateId, {
@@ -147,9 +161,9 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
                 states: newStates,
                 isBatch: true,
                 batchStateIds: stateIds,
-                batchActions: actions,
+                batchActions: stateIdActions[stateId],
                 prevStates
-            } as StoreEventPayload)
+            } as StoreEventBatchAction)
         }
     }
 
@@ -160,9 +174,9 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
     }
 
     listenFor(eventId: string, listener: StoreEventHandler) {
-        this.emitter.addListener(eventId, listener as ((e:string, ...args: any[]) => void));
+        this.emitter.addListener(eventId, listener);
         return () => {
-            this.emitter.removeListener(eventId, listener as ((e:string, ...args: any[]) => void));
+            this.emitter.removeListener(eventId, listener);
         }
     }
 }

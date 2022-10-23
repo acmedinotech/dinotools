@@ -7,3 +7,5 @@ cache
 dist
 target
 node_modules
+
+coverage

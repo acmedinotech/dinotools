@@ -1,4 +1,4 @@
-import { StoreEventPayload, StoreImpl } from "./store"
+import { ActionBatch, StoreEventAction, StoreEventBatchAction, StoreImpl } from "./store"
 
 describe('package: state', () => {
     describe('class StoreImpl', () => {
@@ -13,8 +13,8 @@ describe('package: state', () => {
         // const dispatch 
 
         store.setReducer('s1', (stateId, action, states) => {
-            const {_action, ...actionProps} = action;
-            if (_action === 's1.replace') {
+            const {type, ...actionProps} = action;
+            if (type === 's1.replace') {
                 return {
                     ...actionProps
                 }
@@ -23,8 +23,8 @@ describe('package: state', () => {
         })
         
         store.setReducer('s2', (stateId, action, states) => {
-            const {_action, ...actionProps} = action;
-            if (_action === 's2.replace') {
+            const {type, ...actionProps} = action;
+            if (type === 's2.replace') {
                 return {
                     ...actionProps
                 }
@@ -41,15 +41,16 @@ describe('package: state', () => {
         it('handles dispatched action and emits event, then unsubscribes', () => {
             let event: any = {};
             let called = 0;
-            const unsub = store.listenFor('s1', (eventId, {eventStamp, stateId, action, states, prevState}: Partial<StoreEventPayload>) => {
-                event = {eventId, eventStamp, stateId, action, states, prevState};
+            const unsub = store.listenFor('s1', (eventId, payload) => {
+                payload as StoreEventAction;
+                event = {eventId, ...payload};
                 called++;
             });
 
             const dispatcher = store.getDispatcher('s1');
             
             // @assert: action is handled by reducer and updates s1
-            const action1 = {_action: 's1.replace', k1: 'v', k2: 0};
+            const action1 = {type: 's1.replace', k1: 'v', k2: 0};
             
             dispatcher(action1)
             const {eventStamp, ...restEvent} = event;
@@ -75,29 +76,58 @@ describe('package: state', () => {
 
             // @assert: successfully unsubscribes from state change
             unsub();
-            dispatcher({_action: 's1.replace', k1: 'Z', k2: 9});
+            dispatcher({type: 's1.replace', k1: 'Z', k2: 9});
             expect(called).toEqual(1);
         })
 
         it('handles batch actions', () => {
-            let events: any[] = [];
+            const events: any[] = [];
             let called = 0;
-            const unsub1 = store.listenFor('s1', (eventId, {eventStamp, stateId, action, states, prevState}: Partial<StoreEventPayload>) => {
-                events.push({eventId, eventStamp, stateId, action, states, prevState});
-                called++;
+            const unsub1 = store.listenFor('s1', (eventId, payload) => {
+                expect(eventId).toEqual('s1');
+                const {isBatch, batchStateIds, batchActions} = payload as StoreEventBatchAction;
+                // @assert: batch payload
+                expect(isBatch).toBeTruthy();
+                // @assert: affected stateIds
+                expect(batchStateIds).toEqual(['s1', 's2']);
+                // @assert: specific actions for s1
+                expect(batchActions.length).toEqual(2)
+                events.push({eventId, ...payload});
             });
-            const unsub2 = store.listenFor('s2', (eventId, {eventStamp, stateId, action, states, prevState}: Partial<StoreEventPayload>) => {
-                events.push({eventId, eventStamp, stateId, action, states, prevState});
-                called++;
+            const unsub2 = store.listenFor('s2', (eventId, payload) => {
+                expect(eventId).toEqual('s2');
+                const {eventStamp, batchStateIds, batchActions} = payload as StoreEventBatchAction;
+                // @assert: part of same batch process
+                expect(events[0].eventStamp).toEqual(eventStamp);
+                // @assert: affected stateIds
+                expect(batchStateIds).toEqual(['s1', 's2']);
+                // @assert: specific actions for s2
+                expect(batchActions.length).toEqual(1)
+                events.push({eventId, ...payload});
             });
 
-            store.getBatchDispatcher()([
-                { stateId: 's1', action: {_action: 's1.replace', k1: 'a', k2: 0}},
-                { stateId: 's1', action: {_action: 's1.replace', k1: 'b', k2: 1}},
-                { stateId: 's2', action: {_action: 's2.replace', k3: 'c' }}
-            ])
+            const batch = [
+                { stateId: 's1', action: {type: 's1.replace', k1: 'a', k2: 0}},
+                { stateId: 's1', action: {type: 's1.replace', k1: 'b', k2: 1}},
+                { stateId: 's2', action: {type: 's2.replace', k3: 'c' }}
+            ];
 
+            store.getBatchDispatcher()(batch)
+            
+            // @assert: same state values emitted for each state update
             expect(events.length).toEqual(2);
+            expect(events[0].states).toEqual(events[1].states);
+            expect(events[0].prevStates).toEqual(events[1].prevStates);
+
+            // @assert: states changed as expected
+            expect(events[0].states).toEqual({
+                s1: {
+                    k1: 'b', k2: 1
+                },
+                s2: {
+                    k3: 'c'
+                }
+            })
 
             unsub1();
             unsub2();
