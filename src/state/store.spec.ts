@@ -3,21 +3,33 @@ import { StoreImpl } from "./store"
 describe('package: state', () => {
     describe('class StoreImpl', () => {
         type State1 = {k1: string, k2: number};
-        const store = new StoreImpl<{s1: State1}>({
-            s1: {k1: 'true', k2: 1}
+        type State2 = {k3: boolean};
+
+        const store = new StoreImpl<{s1: State1, s2: State2}>({
+            s1: {k1: 'true', k2: 1},
+            s2: {k3: false}
         })
         
         // const dispatch 
 
         store.setReducer('s1', (stateId, action, states) => {
             const {_action, ...actionProps} = action;
-            console.log('>> ', stateId, _action, actionProps)
             if (_action === 's1.replace') {
                 return {
                     ...actionProps
                 }
             }
             return states.s1;
+        })
+        
+        store.setReducer('s2', (stateId, action, states) => {
+            const {_action, ...actionProps} = action;
+            if (_action === 's2.replace') {
+                return {
+                    ...actionProps
+                }
+            }
+            return states.s2;
         })
 
         it('returns initial state', () => {
@@ -50,6 +62,5 @@ describe('package: state', () => {
                 action: action1
             }));
         })
-
     })
 })

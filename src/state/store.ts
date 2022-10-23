@@ -9,12 +9,30 @@ export type ActionBatch<Type = Record<string,any>> = {stateId: string, action: A
  * If modifications occur, **you must return a new object**, otherwise, changes will be ignored.
  */
 export type Reducer<Type = any> = (stateId: string, action: any, states: Type) => Type[keyof Type];
-export type Dispatcher<Type = any> = (action: Action<Type> | ActionBatch<Type>) => void;
+export type Dispatcher<Type = any> = (action: Action<Type> | Action<Type>) => void;
 export type StoreEventHandler<Type = any> = (eventId: string, action: any, states: Type, state: OneOnly<Type, keyof Type>) => void;
 
 export interface Store<Type = Record<string,any>> {
-    getState(key: string): OneOnly<Type, keyof Type>;
-    getDispatcher(key: string): Dispatcher;
+    /**
+     * Returns current snapshot of the given `stateId`.
+     * @param stateId 
+     */
+    getState(stateId: string): OneOnly<Type, keyof Type>;
+    /**
+     * Returns all states.
+     */
+    getStates(): Type;
+    /**
+     * Gets the action dispatcher for the given `stateId`.
+     * @param stateId 
+     */
+    getDispatcher(stateId: string): Dispatcher;
+    /**
+     * Get notified of store events. For typical state updates, you can simply listen
+     * for `stateId` as the `eventId`. Other `eventIds` TBD.
+     * @return A callback function that removes the listener.
+     */
+    listenFor(eventId: string, listener: StoreEventHandler): (() => void)
 }
 
 /**
@@ -36,26 +54,32 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
         return this.states[stateId];
     }
 
+    getStates() {
+        return {...this.states}
+    }
+
     setReducer(stateId: string, reducer: Reducer<Type>) {
         this.reducers[stateId] = reducer;
     };
+
+    __dispatch(stateId: string, action: Action) {
+        const reducer = this.reducers[stateId];
+        const prevState = {...this.states[stateId]};
+        const newState = reducer(stateId, action, this.states);
+        if (newState === prevState) {
+            return;
+        }
+
+        this.states[stateId] = newState;
+        this.emitter.emit(stateId, stateId, action, this.states, prevState);
+    }
 
     getDispatcher(stateId: string): Dispatcher {
         if (!this.reducers[stateId]) {
             throw new Error(`no reducer set: ${stateId}`);
         }
-
-        const reducer = this.reducers[stateId];
-        const prevState = {...this.states[stateId]};
-
-        return (action) => {
-            const newState = reducer(stateId, action, this.states);
-            if (newState === prevState) {
-                return;
-            }
-
-            this.states[stateId] = newState;
-            this.emitter.emit(stateId, stateId, action, this.states, prevState);
+        return (action: Action) => {
+            this.__dispatch(stateId, action);
         }
     }
 
