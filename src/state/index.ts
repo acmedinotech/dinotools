@@ -12,18 +12,18 @@ export type Reducer<Type = any> = (stateId: string, action: any, states: Type) =
 export type Dispatcher<Type = any> = (action: Action<Type>) => void;
 export type BatchDispatcher<Type = any> = (actions: ActionBatch<Type>) => void;
 
-export type StoreEventAction<Type = any> = {
-    states: Type;
+export type StoreEvent<Type = any> = {
+    eventId: string;
     eventStamp: string;
-    isBatch: false;
+    states: Type;
+    isBatch: boolean;
+};
+export type StoreEventAction<Type = any> = StoreEvent<Type> & {
     stateId: string;
     action: Action<Type>;
     prevState: OneOnly<Type, keyof Type>;
 };
-export type StoreEventBatchAction<Type = any> = {
-    states: Type;
-    eventStamp: string;
-    isBatch: true;
+export type StoreEventBatchAction<Type = any> = StoreEvent<Type> & {
     batchStateIds: string[];
     batchActions: Action<Type>[];
     prevStates: Type;
@@ -31,7 +31,15 @@ export type StoreEventBatchAction<Type = any> = {
 
 export type AllStoreEvents = StoreEventAction | StoreEventBatchAction;
 
-export type StoreEventHandler<Type = any> = (eventId: string, payload: AllStoreEvents, ...args: any[]) => void;
+export type StoreEventHandler<Type = any> = (payload: AllStoreEvents, ...args: any[]) => void;
+
+export type HookContext = {
+    lifecycle: 'pre-commit';
+    next: (state?: any) => void;
+    stop: (state?: any) => void;
+    abort: () => void;
+};
+export type HookHandler = (context: HookContext, event: StoreEvent) => Promise<any>;
 
 export interface Store<Type = Record<string, any>> {
     /**
@@ -62,6 +70,8 @@ export interface Store<Type = Record<string, any>> {
      * @return A callback function that removes the listener.
      */
     listenFor(eventId: string, listener: StoreEventHandler): () => void;
+
+    // applyPreCommit: () => void;
 }
 
 /**
@@ -108,21 +118,25 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
         }
 
         this.states[stateId] = newState;
-        this.emitter.emit(stateId, stateId, {
+
+        const event = {
+            eventId: stateId,
             eventStamp: this.__makeEventStamp(),
             states: this.states,
             isBatch: false,
             stateId,
             action,
             prevState,
-        } as StoreEventAction);
+        } as StoreEventAction;
+        this.emitter.emit(stateId, event);
+        this.emitter.emit('postCommit', event);
     }
 
     getDispatcher(stateId: string): Dispatcher<Type> {
         if (!this.reducers[stateId]) {
             throw new Error(`no reducer set: ${stateId}`);
         }
-        return (action: Action) => {
+        return async (action: Action) => {
             this.dispatch(stateId, action);
         };
     }
@@ -156,14 +170,17 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
         const stateIds = Object.keys(stateIdActions);
         const eventStamp = this.__makeEventStamp();
         for (const stateId of stateIds) {
-            this.emitter.emit(stateId, stateId, {
+            const event = {
+                eventId: stateId,
                 eventStamp,
                 states: newStates,
                 isBatch: true,
                 batchStateIds: stateIds,
                 batchActions: stateIdActions[stateId],
                 prevStates,
-            } as StoreEventBatchAction);
+            } as StoreEventBatchAction;
+            this.emitter.emit(stateId, event);
+            this.emitter.emit('postCommit', event);
         }
     }
 
