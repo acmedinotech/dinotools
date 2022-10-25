@@ -1,8 +1,8 @@
-import {EventEmitter} from "events";
-import { OneOnly } from "../types";
+import { EventEmitter } from 'events';
+import { OneOnly } from '../types';
 
-export type Action<Type = Record<string,any>> = {type: string; [key: string]: any}
-export type ActionBatch<Type = Record<string,any>> = {stateId: string, action: Action<Type>}[]
+export type Action<Type = Record<string, any>> = { type: string; [key: string]: any };
+export type ActionBatch<Type = Record<string, any>> = { stateId: string; action: Action<Type> }[];
 
 /**
  * Gets a snapshot of whole application data, and returns current/modified `states[stateId]`.
@@ -19,24 +19,24 @@ export type StoreEventAction<Type = any> = {
     stateId: string;
     action: Action<Type>;
     prevState: OneOnly<Type, keyof Type>;
-}
+};
 export type StoreEventBatchAction<Type = any> = {
     states: Type;
     eventStamp: string;
     isBatch: true;
-    batchStateIds: string[]
+    batchStateIds: string[];
     batchActions: Action<Type>[];
     prevStates: Type;
-}
+};
 
 export type AllStoreEvents = StoreEventAction | StoreEventBatchAction;
 
 export type StoreEventHandler<Type = any> = (eventId: string, payload: AllStoreEvents, ...args: any[]) => void;
 
-export interface Store<Type = Record<string,any>> {
+export interface Store<Type = Record<string, any>> {
     /**
      * Returns current snapshot of the given `stateId`.
-     * @param stateId 
+     * @param stateId
      */
     getState(stateId: string): OneOnly<Type, keyof Type>;
     /**
@@ -45,15 +45,15 @@ export interface Store<Type = Record<string,any>> {
     getStates(): Type;
     /**
      * Gets the action dispatcher for the given `stateId`.
-     * @param stateId 
+     * @param stateId
      */
     getDispatcher(stateId: string): Dispatcher;
     /**
      * Gets the bulk dispatcher. The semantics are as follows:
-     * 
+     *
      * - for any stateId changed 1+ times, emit a single event for that
      * - each `stateIds` value is simply `[stateId]`
-     *   - FUTURE: include every stateId updated? 
+     *   - FUTURE: include every stateId updated?
      */
     getBatchDispatcher(): BatchDispatcher;
     /**
@@ -61,13 +61,13 @@ export interface Store<Type = Record<string,any>> {
      * for `stateId` as the `eventId`. Other `eventIds` TBD.
      * @return A callback function that removes the listener.
      */
-    listenFor(eventId: string, listener: StoreEventHandler): (() => void)
+    listenFor(eventId: string, listener: StoreEventHandler): () => void;
 }
 
 /**
- * 
+ *
  */
-export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
+export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
     emitter = new EventEmitter();
     states: Type;
     reducers: Record<string, Reducer<Type>> = {};
@@ -78,30 +78,30 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
 
     eventCount = 0;
     __makeEventStamp() {
-        return `${++this.eventCount}-${new Date().toISOString()}`
+        return `${++this.eventCount}-${new Date().toISOString()}`;
     }
 
     getState(stateId: string) {
         if (!this.states[stateId]) {
-            throw new Error(`no state set: ${stateId}`)
+            throw new Error(`no state set: ${stateId}`);
         }
         return this.states[stateId];
     }
 
     getStates() {
-        return {...this.states}
+        return { ...this.states };
     }
 
     setReducer(stateId: string, reducer: Reducer<Type>) {
         this.reducers[stateId] = reducer;
-    };
+    }
 
     applyReducer(stateId: string, action: Action, state: any) {
         return this.reducers[stateId](stateId, action, this.states);
     }
 
     dispatch(stateId: string, action: Action) {
-        const prevState = {...this.states[stateId]};
+        const prevState = { ...this.states[stateId] };
         const newState = this.applyReducer(stateId, action, prevState);
         if (newState === prevState) {
             return;
@@ -114,7 +114,7 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
             isBatch: false,
             stateId,
             action,
-            prevState
+            prevState,
         } as StoreEventAction);
     }
 
@@ -124,13 +124,13 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
         }
         return (action: Action) => {
             this.dispatch(stateId, action);
-        }
+        };
     }
 
     batchDispatch(actions: ActionBatch) {
-        const stateIdActions: Record<string,Action[]> = {};
-        const prevStates = {...this.states};
-        const newStates = {...this.states};
+        const stateIdActions: Record<string, Action[]> = {};
+        const prevStates = { ...this.states };
+        const newStates = { ...this.states };
 
         const pushAction = (stateId: string, action: Action) => {
             if (!stateIdActions[stateId]) {
@@ -138,9 +138,9 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
             }
 
             stateIdActions[stateId].push(action);
-        }
+        };
 
-        for (const {stateId, action} of actions) {
+        for (const { stateId, action } of actions) {
             if (!this.reducers[stateId]) {
                 throw new Error(`no reducer set: ${stateId}`);
             }
@@ -162,21 +162,21 @@ export class StoreImpl<Type = Record<string,any>> implements Store<Type>  {
                 isBatch: true,
                 batchStateIds: stateIds,
                 batchActions: stateIdActions[stateId],
-                prevStates
-            } as StoreEventBatchAction)
+                prevStates,
+            } as StoreEventBatchAction);
         }
     }
 
     getBatchDispatcher(): BatchDispatcher<Type> {
         return (actions: ActionBatch) => {
             this.batchDispatch(actions);
-        }
+        };
     }
 
     listenFor(eventId: string, listener: StoreEventHandler) {
         this.emitter.addListener(eventId, listener);
         return () => {
             this.emitter.removeListener(eventId, listener);
-        }
+        };
     }
 }
