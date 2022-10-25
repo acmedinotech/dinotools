@@ -1,0 +1,25 @@
+{
+    "compileOnSave": false,
+    "compilerOptions": {
+        "rootDir": "./src",
+        "outDir": "./dist",
+        "sourceMap": true,
+        "declaration": true,
+        "declarationMap": true,
+        "moduleResolution": "node",
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        "importHelpers": true,
+        "target": "es2015",
+        "module": "esnext",
+        "lib": ["es2017", "dom", "ES2021.String"],
+        "skipLibCheck": true,
+        "skipDefaultLibCheck": true,
+        "baseUrl": ".",
+        "paths": {
+            "@acmdinotech/dinotools": ["src"]
+        }
+    },
+    "include": ["src"],
+    "exclude": ["node_modules", "tmp", "**/*.spec.*", "**/*.test.*"]
+}
