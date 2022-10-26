@@ -17,7 +17,7 @@
         "skipDefaultLibCheck": true,
         "baseUrl": ".",
         "paths": {
-            "@acmdinotech/dinotools": ["src"]
+            "state": ["src/state/index.ts"]
         }
     },
     "include": ["src"],
