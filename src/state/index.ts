@@ -1,4 +1,3 @@
-import { EventEmitter } from 'events';
 import { OneOnly } from '../types';
 
 export type Action<Type = Record<string, any>> = { type: string; [key: string]: any };
@@ -8,7 +7,7 @@ export type ActionBatch<Type = Record<string, any>> = { stateId: string; action:
  * Gets a snapshot of whole application data, and returns current/modified `states[stateId]`.
  * If modifications occur, **you must return a new object**, otherwise, changes will be ignored.
  */
-export type Reducer<Type = any> = (stateId: string, action: any, states: Type) => Type[keyof Type];
+export type Reducer<Type = Record<string, any>> = (stateId: string, action: any, states: Type) => Type[keyof Type];
 export type Dispatcher<Type = any> = (action: Action<Type>) => void;
 export type BatchDispatcher<Type = any> = (actions: ActionBatch<Type>) => void;
 
@@ -74,13 +73,41 @@ export interface Store<Type = Record<string, any>> {
     // applyPreCommit: () => void;
 }
 
+class Emitter {
+    _listeners: Record<string, Function[]> = {};
+
+    on(eventId: string, fn: Function) {
+        if (!this._listeners[eventId]) {
+            this._listeners[eventId] = [];
+        }
+        this._listeners[eventId].push(fn);
+    }
+
+    emit(eventId: string, ...args: any[]) {
+        if (!this._listeners[eventId]) {
+            return;
+        }
+        for (const fn of this._listeners[eventId]) {
+            fn(...args);
+        }
+    }
+
+    off(eventId: string, fn: Function) {
+        if (!this._listeners[eventId]) {
+            return this;
+        }
+        this._listeners[eventId] = this._listeners[eventId].filter((f) => f !== fn);
+        return this;
+    }
+}
+
 /**
  *
  */
 export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
-    emitter = new EventEmitter();
     states: Type;
-    reducers: Record<string, Reducer<Type>> = {};
+    reducers: Record<string, Reducer> = {};
+    emitter = new Emitter();
 
     constructor(_initState: Type) {
         this.states = _initState;
@@ -102,7 +129,7 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
         return { ...this.states };
     }
 
-    setReducer(stateId: string, reducer: Reducer<Type>) {
+    setReducer(stateId: string, reducer: Reducer) {
         this.reducers[stateId] = reducer;
     }
 
@@ -190,10 +217,12 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
         };
     }
 
+    lcount = 0;
     listenFor(eventId: string, listener: StoreEventHandler) {
-        this.emitter.addListener(eventId, listener);
+        this.emitter.on(eventId, listener);
+        const tstamp = this.lcount++;
         return () => {
-            this.emitter.removeListener(eventId, listener);
+            this.emitter.off(eventId, listener);
         };
     }
 }

@@ -40,6 +40,8 @@ const dispatch = store.getDispatcher('pageInfo');
 dispatch({type: 'pageInfo.replace', title: 'anything'})
 ```
 
+> Note: `dispatch()` returns a promise to facilitate async lifecycle hooks (described later). You are not obligated to wait for promise if you don't need synchronous dispatching.
+
 Finally, you can subscribe to state changes with:
 
 ```javascript
@@ -82,6 +84,24 @@ The way this works is as follows:
 - events are emitted for each unique `stateId` in the batch
 
 So in the above example, a state update is emitted once for `userInfo` and `pageInfo`. Instead of a single action, you receive all the actions related to that `stateId` as `batchActions`. `batchStateIds` holds all the states affected.
+
+## Lifecycle Hooks
+
+To facilitate more complex workflows, the store divides up work into the following lifecycle events which you can hook into:
+
+- `pre-commit`: once reducers run and new state available (but not committed), action/state will be passed to each hook, which can further modify it or trigger an error. **This can directly affect state**.
+  - example: state data should be enriched from some external service based on action
+  - example: action cannot be applied to current state, so trigger error
+- `post-commit`: if a new state is generated, and after listeners are invoked, perform additional work based on new state. **This will not directly affect state**.
+  - example: form state gets submitted, so a form handler will see that and do actual submission.
+
+`post-commit` is the easiest hook to work with, since it simply iterates over each hook with no branching logic.
+
+`pre-commit` is more complex. The hook will receive the following callbacks with the following semantics:
+
+- `next(state?)`: if called, the next hook will be invoked. if `state` is given, it becomes the new state, otherwise, the state prior to current hook is passed along
+- `stop(state?)`: if called, no other hooks will be invoked. `state` argument follows `next()` semantics
+- `abort()`: if called, rejects new changes and commits nothing.
 
 ## Roadmap
 
