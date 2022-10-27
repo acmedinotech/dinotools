@@ -171,6 +171,10 @@ export class FormHandler {
         this.validators = [...validators];
     }
 
+    setState(state: FormState) {
+        this.state = state;
+    }
+
     reset(form: Partial<FormState>) {
         this.dispatcher(resetForm(form));
     }

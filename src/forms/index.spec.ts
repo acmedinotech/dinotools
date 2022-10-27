@@ -1,4 +1,14 @@
-import { execOp, formReducer, FormState, resetForm, setErrors, updateField, updateFields } from './index';
+import {
+    execOp,
+    FormHandler,
+    formReducer,
+    FormState,
+    FormValidator,
+    resetForm,
+    setErrors,
+    updateField,
+    updateFields,
+} from './index';
 import { StoreImpl } from '../state';
 import exp from 'constants';
 
@@ -94,6 +104,78 @@ describe('package: forms', () => {
                     },
                 })
             );
+        });
+    });
+
+    describe('class FormHandler', () => {
+        const validators: FormValidator[] = [
+            async (values) => {
+                if (values.is_error) {
+                    return {
+                        is_error: {
+                            message: 'is_error exists!',
+                        },
+                    };
+                }
+            },
+            async (values) => {
+                if (!values.age?.match(/^\d+$/)) {
+                    return { age: { message: 'must be number' } };
+                }
+            },
+            async (values) => {
+                if (!values.age?.match(/^2\d+$/)) {
+                    return { age: { message: 'must start with 2' } };
+                }
+            },
+        ];
+
+        const expectedErrors = {
+            is_error: {
+                message: 'is_error exists!',
+            },
+            age: { message: 'must be number;; must start with 2' },
+        };
+
+        dispatcher(resetForm({ values: { is_error: true, age: 'five' } }));
+
+        let formHandler = new FormHandler(store.getState('form'), dispatcher, validators);
+
+        afterEach(() => {
+            formHandler.softReset();
+            formHandler = new FormHandler(store.getState('form'), dispatcher, validators);
+        });
+
+        it('finds and dispatches errors', async () => {
+            const errors = await formHandler.hasErrors();
+            expect(errors).toBeTruthy();
+            expect(store.getState('form').errors).toEqual(expectedErrors);
+        });
+
+        it('finds and returns errors', async () => {
+            const errors = await formHandler.checkAndReturnErrors();
+            expect(errors).toEqual(expectedErrors);
+            expect(store.getState('form').errors).toEqual({});
+        });
+
+        it('dispatches 0 errors', async () => {
+            formHandler.reset({ values: { age: '20' }, errors: { age: { message: 'erase plz' } } });
+            formHandler.setState(store.getState('form'));
+            const errors = await formHandler.checkAndAlwaysDispatchErrors();
+            expect(errors).toBeUndefined;
+            expect(store.getState('form').errors).toEqual({});
+        });
+
+        it('triggers submit', () => {
+            formHandler.submit({ key: 'val' });
+            expect(store.getState('form').execOp).toEqual('submit');
+            expect(store.getState('form').execOpParams).toEqual({ key: 'val' });
+        });
+
+        it('updates fields', () => {
+            formHandler.update('a', 1);
+            formHandler.updateMany({ b: 2, c: '3' });
+            expect(store.getState('form').values).toEqual(expect.objectContaining({ a: 1, b: 2, c: '3' }));
         });
     });
 });
