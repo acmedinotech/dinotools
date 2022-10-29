@@ -1,5 +1,6 @@
 import {
     ActionBatch,
+    defaultReducer,
     keyItemAdd,
     keyItemMove,
     keyItemReducer,
@@ -135,14 +136,151 @@ describe('package: state', () => {
                 s1: {
                     k1: 'b',
                     k2: 1,
+                    __subEvents: {},
                 },
                 s2: {
                     k3: 'c',
+                    __subEvents: {},
                 },
             });
 
             unsub1();
             unsub2();
+        });
+    });
+
+    describe('subEvents', () => {
+        const store = new StoreImpl(
+            {
+                items: { item1: { name: 'Item 1' } },
+                other: {},
+            },
+            {
+                items: defaultReducer,
+                other: defaultReducer,
+            }
+        );
+
+        let eventOrder: string[] = [];
+        const dispatcher = store.getDispatcher('items');
+        const batchDispatcher = store.getBatchDispatcher();
+        const eventCounter: Record<string, number> = {
+            all: 0,
+            item1: 0,
+            item2: 0,
+            other: 0,
+            other1: 0,
+        };
+
+        const unsubAll = store.listenFor('items', () => {
+            eventCounter.all++;
+            eventOrder.push('all');
+        });
+        const unsub1 = store.listenFor('items/item1', (payload) => {
+            eventCounter.item1++;
+            eventOrder.push(payload.subEventId ?? '');
+        });
+        const unsub2 = store.listenFor('items/item2', (payload) => {
+            eventCounter.item2++;
+            eventOrder.push(payload.subEventId ?? '');
+        });
+        const unsub3 = store.listenFor('other', (payload) => {
+            eventCounter.other++;
+            eventOrder.push('other-all');
+        });
+        const unsub4 = store.listenFor('other/1', (payload) => {
+            eventCounter.other1++;
+            eventOrder.push(payload.subEventId ?? '');
+        });
+
+        afterAll(() => {
+            unsubAll();
+            unsub1();
+            unsub2();
+            unsub3();
+            unsub4();
+        });
+
+        beforeEach(() => {
+            eventOrder = [];
+        });
+
+        describe('single events', () => {
+            it('performs subEvent and event in right order', () => {
+                dispatcher({ __subEvents: { item1: true } });
+                expect(eventOrder).toEqual(['item1', 'all']);
+                expect(eventCounter).toEqual({
+                    all: 1,
+                    item1: 1,
+                    item2: 0,
+                    other: 0,
+                    other1: 0,
+                });
+            });
+            it('excludes main event', () => {
+                dispatcher({ __subEvents: { item1: true, '!': true } });
+                expect(eventOrder).toEqual(['item1']);
+                expect(eventCounter).toEqual({
+                    all: 1,
+                    item1: 2,
+                    item2: 0,
+                    other: 0,
+                    other1: 0,
+                });
+            });
+            it('ignores excludes due to no other subEvents', () => {
+                dispatcher({ __subEvents: { '!': true } });
+                expect(eventOrder).toEqual(['all']);
+                expect(eventCounter).toEqual({
+                    all: 2,
+                    item1: 2,
+                    item2: 0,
+                    other: 0,
+                    other1: 0,
+                });
+            });
+        });
+
+        describe('batch events', () => {
+            it('merges subEvents from multiple transforms on same state', () => {
+                const oldCounts = { ...eventCounter };
+                batchDispatcher([
+                    { stateId: 'items', action: { __subEvents: { item1: 'a', '!': false } } },
+                    { stateId: 'items', action: { __subEvents: { item2: 'b' } } },
+                ]);
+
+                expect(eventOrder).toEqual(['item1', 'item2', 'all']);
+                expect(eventCounter.item1 - oldCounts.item1).toEqual(1);
+                expect(eventCounter.item2 - oldCounts.item2).toEqual(1);
+                expect(store.getState('items')['__subEvents']).toEqual({
+                    item1: 'a',
+                    item2: 'b',
+                });
+            });
+            it('merges subEvents across 2+ states and excludes main event of items', () => {
+                const oldCounts = { ...eventCounter };
+                batchDispatcher([
+                    { stateId: 'items', action: { __subEvents: { item1: 'f' } } },
+                    { stateId: 'items', action: { __subEvents: { item2: 'g', '!': true } } },
+                    { stateId: 'other', action: { __subEvents: { '1': 'c' } } },
+                    { stateId: 'other', action: { __subEvents: { '1': 'd' } } },
+                ]);
+
+                expect(eventOrder).toEqual(['item1', 'item2', '1', 'other-all']);
+                expect(eventCounter.item1 - oldCounts.item1).toEqual(1);
+                expect(eventCounter.item2 - oldCounts.item2).toEqual(1);
+                expect(eventCounter.all - oldCounts.all).toEqual(0);
+                expect(eventCounter.other - oldCounts.other).toEqual(1);
+                expect(eventCounter.other1 - oldCounts.other1).toEqual(1);
+                expect(store.getState('items')['__subEvents']).toEqual({
+                    item1: 'f',
+                    item2: 'g',
+                    // '!' is excluded!
+                });
+                expect(store.getState('other')['__subEvents']).toEqual({
+                    '1': 'd',
+                });
+            });
         });
     });
 
@@ -159,7 +297,45 @@ describe('package: state', () => {
         const events: Record<string, number> = {};
         const dispatcher = store.getDispatcher('items');
 
-        describe('#keyItemReducer()', () => {
+        describe('#keyItemReducer() and events', () => {
+            const eventCounter: Record<string, number> = {
+                all: 0,
+                item1: 0,
+                item2: 0,
+                item2_a: 0,
+                item2_b: 0,
+            };
+
+            const unsubAll = store.listenFor('items', () => {
+                eventCounter.all++;
+            });
+            const unsub1 = store.listenFor('items/item1', () => {
+                eventCounter.item1++;
+            });
+            const unsub2 = store.listenFor('items/item2', () => {
+                eventCounter.item2++;
+            });
+            const unsub2_a = store.listenFor('items/item2_a', () => {
+                eventCounter.item2_a++;
+            });
+            const unsub2_b = store.listenFor('items/item2_b', () => {
+                eventCounter.item2_b++;
+            });
+
+            afterAll(() => {
+                unsubAll();
+                unsub1();
+                unsub2();
+                unsub2_a();
+                unsub2_b();
+            });
+
+            it('updates an item', () => {
+                dispatcher(keyItemAdd('item1', { name: 'Item 1!' }));
+                const state = store.getState('items');
+                expect(state['item1']).toEqual({ name: 'Item 1!' });
+                expect(state['__subEvents']).toEqual({ item1: 'add' });
+            });
             it('adds an item', () => {
                 dispatcher(keyItemAdd('item2', { name: 'Item 2' }));
                 const state = store.getState('items');
@@ -190,6 +366,15 @@ describe('package: state', () => {
                 const state = store.getState('items');
                 expect(state['item2_b']).toBeFalsy();
                 expect(state['__subEvents']).toEqual({ item2_b: 'remove' });
+            });
+            it('triggers expected number of events', () => {
+                expect(eventCounter).toEqual({
+                    all: 5,
+                    item1: 1,
+                    item2: 2,
+                    item2_a: 2,
+                    item2_b: 2,
+                });
             });
         });
     });

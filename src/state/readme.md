@@ -85,6 +85,30 @@ The way this works is as follows:
 
 So in the above example, a state update is emitted once for `userInfo` and `pageInfo`. Instead of a single action, you receive all the actions related to that `stateId` as `batchActions`. `batchStateIds` holds all the states affected.
 
+## Localized events via `__subEvents` (`KEY_SUBEVENTS`)
+
+There may be times when you only need to be notified of a specific branch of changes instead of a full state change (e.g. you loaded a row of data and want to update individual rows and cells without a full refresh).
+
+This is possible via `__subEvents`. If it's set on the state after the reducers run, each key defines an additional event to fire (the values are metadata for your event listener). You can listen for these events with `$eventId/$subEventId`. These events are fired before `$eventId` to ensure child elements update before parent.
+
+Listeners will receive `eventId` and `subEventId` and can examine the metadata associated with the subEvent through `state['__subEvents'][subEventId]`
+
+```javascript
+export const yourReducer = (stateId, action, states) => {
+    if (action.type == 'something') {
+        return {...states[stateId], __subEvents: {
+            something: {message: 'it happened'}
+        }}
+    }
+}
+```
+
+> If you leverage this feature, it's important that your reducers always overwrite it with appropriate values OR remove it entirely when it's not needed
+
+### Special subEventIds
+
+- `!`: if present and `true`, prevents main `$eventId` from firing. Only interpreted if other keys are present. **Use with caution. And as a precaution for future executions, the key is removed before commit!**
+
 ## `keyItemReducer`: item-specific state update loop via __subEvents
 
 In a moderately complex app, it might be helpful to use the store to map specific items by key. Not only that, but dispatches are able to emit item-specific events. For the first part, we can use the `keyItemReducer`. For the second part, we'll inject a magic property `__subEvents` to emit lower-level events.

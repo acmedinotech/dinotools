@@ -19,6 +19,7 @@ export type BatchDispatcher<Type = any> = (actions: ActionBatch<Type>) => void;
 
 export type StoreEvent<Type = any> = {
     eventId: string;
+    subEventId?: string;
     eventStamp: string;
     states: Type;
     isBatch: boolean;
@@ -114,7 +115,7 @@ export const defaultReducer = (stateId: string, action: any, states: any) => {
     return { ...states[stateId], ...action };
 };
 
-export const KEY_ITEM_SUBEVENTS = '__subEvents';
+export const KEY_SUBEVENTS = '__subEvents';
 
 export type KeyItemAction = Action<{
     /**
@@ -155,11 +156,11 @@ export const keyItemReducer: Reducer<Record<string, any>, KeyItemAction> = (stat
         }
 
         nstate[__key] = { ...item };
-        nstate['__subEvents'] = __subEvents;
+        nstate[KEY_SUBEVENTS] = __subEvents;
     } else if (__deleteKey) {
         __subEvents[__deleteKey] = 'remove';
         delete nstate[__deleteKey];
-        nstate['__subEvents'] = __subEvents;
+        nstate[KEY_SUBEVENTS] = __subEvents;
     }
 
     return nstate;
@@ -241,8 +242,24 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
             action,
             prevState,
         } as StoreEventAction;
-        this.emitter.emit(stateId, event);
-        this.emitter.emit('postCommit', event);
+
+        let excludeMainEvent = false;
+        let subEventCount = 0;
+        const subEvents = newState[KEY_SUBEVENTS] ?? {};
+        for (const subEventId in subEvents) {
+            if (subEventId === '!') {
+                excludeMainEvent = !!subEvents['!'];
+                delete newState[KEY_SUBEVENTS]['!'];
+                continue;
+            }
+            subEventCount++;
+            this.emitter.emit(`${stateId}/${subEventId}`, { ...event, subEventId });
+        }
+
+        if (!excludeMainEvent || subEventCount === 0) {
+            this.emitter.emit(stateId, event);
+            this.emitter.emit('postCommit', event);
+        }
     }
 
     getDispatcher(stateId: keyof Type): Dispatcher<Type[keyof Type]> {
@@ -275,14 +292,19 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
             const newState = this.applyReducer(stateId, action, newStates);
             if (newState !== prevStates[stateId]) {
                 pushAction(stateId, action);
+                const lastSubEvents = newStates[stateId][KEY_SUBEVENTS] ?? {};
+                const newSubEvents = newState[KEY_SUBEVENTS] ?? {};
                 newStates[stateId] = newState;
+                newStates[stateId][KEY_SUBEVENTS] = { ...lastSubEvents, ...newSubEvents };
             }
         }
 
         this.states = newStates;
         const stateIds = Object.keys(stateIdActions);
         const eventStamp = this.__makeEventStamp();
+
         for (const stateId of stateIds) {
+            const subEvents = newStates[stateId][KEY_SUBEVENTS] ?? {};
             const event = {
                 eventId: stateId,
                 eventStamp,
@@ -292,8 +314,23 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
                 batchActions: stateIdActions[stateId],
                 prevStates,
             } as StoreEventBatchAction;
-            this.emitter.emit(stateId, event);
-            this.emitter.emit('postCommit', event);
+
+            let excludeMainEvent = false;
+            let subEventCount = 0;
+            for (const subEventId in subEvents) {
+                if (subEventId === '!') {
+                    excludeMainEvent = !!subEvents[subEventId];
+                    delete newStates[stateId][KEY_SUBEVENTS]['!'];
+                    continue;
+                }
+                subEventCount++;
+                this.emitter.emit(`${stateId}/${subEventId}`, { ...event, subEventId });
+            }
+
+            if (!excludeMainEvent || subEventCount === 0) {
+                this.emitter.emit(stateId, event);
+                this.emitter.emit('postCommit', event);
+            }
         }
     }
 
