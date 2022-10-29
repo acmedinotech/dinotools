@@ -1,4 +1,5 @@
-import { Action, Dispatcher, Reducer } from '../state';
+import { Action, Dispatcher, getStore, Reducer, Store } from '../state';
+import { useState, useEffect, SyntheticEvent } from 'react';
 
 export const FORM_RESET = 'form.reset';
 export const FORM_UPDATE_FIELD = 'form.field.update1';
@@ -21,6 +22,10 @@ export type ExecOpParams = {
      * If true, clears any errors.
      */
     clearErrors?: boolean;
+    /**
+     * If defined, sets an error state.
+     */
+    setErrors?: FormState['errors'];
     /**
      * Forces lock or unlock if defined. By default, any operation starting with `submit`
      * locks form.
@@ -64,6 +69,15 @@ export type FormState = {
      * Basic map of error values.
      */
     errors: Record<string, FieldError>;
+};
+
+export const getFormState = (s: Partial<FormState> = {}): FormState => {
+    return {
+        status: 'clean',
+        values: {},
+        errors: {},
+        ...s,
+    };
 };
 
 /**
@@ -146,6 +160,8 @@ export const formReducer: Reducer<Record<string, any>> = (stateId, action, state
         let others: any = {};
         if (execOpParams?.clearErrors) {
             others.errors = {};
+        } else if (execOpParams?.setErrors) {
+            others.errors = execOpParams?.setErrors;
         }
         if (execOpParams?.locked !== undefined) {
             others.locked = execOpParams.locked;
@@ -171,6 +187,15 @@ export class FormHandler {
         this.validators = [...validators];
     }
 
+    isValuesEmpty() {
+        return Object.keys(this.state.values).length === 0;
+    }
+
+    get(field: string, defVal?: any): any {
+        const v = this.state.values[field];
+        return v !== undefined ? v : defVal;
+    }
+
     setState(state: FormState) {
         this.state = state;
     }
@@ -188,6 +213,10 @@ export class FormHandler {
 
     doOperation(op: string, params?: ExecOpParams) {
         this.dispatcher(execOp(op, params));
+    }
+
+    resetOperation(params?: ExecOpParams) {
+        this.dispatcher(execOp('', params));
     }
 
     submit(params?: ExecOpParams) {
@@ -264,4 +293,44 @@ export class FormHandler {
     async checkAndReturnErrors() {
         return await this.hasErrors(false);
     }
+
+    getOnChangeHandler(field?: string) {
+        return (evt: any) => {
+            const fname = field ?? evt.target?.name ?? evt.target?.id;
+            this.update(fname, evt.target?.value);
+        };
+    }
+
+    getExecOpHandler(op: string, params?: ExecOpParams) {
+        return () => {
+            this.doOperation(op, params);
+        };
+    }
 }
+
+export type UseStateFormParams = {
+    /**
+     * The id of the global store to use. If empty, uses default.
+     */
+    storeId?: string;
+    /**
+     * Optional validators to initialize FormHandler with.
+     */
+    validators?: FormValidator[];
+};
+
+export const useStoreForm = (stateId: string, params: UseStateFormParams): FormHandler => {
+    const s = getStore(params.storeId);
+    const state = s.getState(stateId);
+    const dispatcher = s.getDispatcher(stateId);
+
+    const [_s, _ss] = useState(state);
+
+    const unsub = s.listenFor(stateId, (payload) => {
+        _ss(payload.states[stateId]);
+    });
+
+    useEffect(() => unsub);
+
+    return new FormHandler(state, dispatcher, params.validators ?? []);
+};
