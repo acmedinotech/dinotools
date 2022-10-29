@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
+import { FormState } from 'src/forms';
 import { OneOnly } from '../types';
 
-export type Action<Type = Record<string, any>> = { type: string; [key: string]: any };
+export type Action<Type = Record<string, any>> = { type?: string; [key: string]: any };
 export type ActionBatch<Type = Record<string, any>> = { stateId: string; action: Action<Type> }[];
 
 /**
@@ -20,7 +22,7 @@ export type StoreEvent<Type = any> = {
 export type StoreEventAction<Type = any> = StoreEvent<Type> & {
     stateId: string;
     action: Action<Type>;
-    prevState: OneOnly<Type, keyof Type>;
+    prevState: Type[keyof Type];
 };
 export type StoreEventBatchAction<Type = any> = StoreEvent<Type> & {
     batchStateIds: string[];
@@ -45,7 +47,7 @@ export interface Store<Type = Record<string, any>> {
      * Returns current snapshot of the given `stateId`.
      * @param stateId
      */
-    getState(stateId: string): OneOnly<Type, keyof Type>;
+    getState(stateId: keyof Type): Type[keyof Type];
     /**
      * Returns all states.
      */
@@ -54,7 +56,7 @@ export interface Store<Type = Record<string, any>> {
      * Gets the action dispatcher for the given `stateId`.
      * @param stateId
      */
-    getDispatcher(stateId: string): Dispatcher;
+    getDispatcher(stateId: keyof Type): Dispatcher<Type[keyof Type]>;
     /**
      * Gets the bulk dispatcher. The semantics are as follows:
      *
@@ -69,8 +71,6 @@ export interface Store<Type = Record<string, any>> {
      * @return A callback function that removes the listener.
      */
     listenFor(eventId: string, listener: StoreEventHandler): () => void;
-
-    // applyPreCommit: () => void;
 }
 
 class Emitter {
@@ -102,6 +102,15 @@ class Emitter {
 }
 
 /**
+ * For each defined state, this reducer is automatically applied if not overridden, and
+ * allows for a simple merging of existing state with action. This makes the dispatch for the
+ * state operate like React's `useState()`
+ */
+const defaultReducer = (stateId: string, action: any, states: any) => {
+    return { ...states[stateId], ...action };
+};
+
+/**
  *
  */
 export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
@@ -109,8 +118,11 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
     reducers: Record<string, Reducer> = {};
     emitter = new Emitter();
 
-    constructor(_initState: Type) {
+    constructor(_initState: Type, _reducers: Record<string, Reducer> = {}) {
         this.states = _initState;
+        for (const key in _initState) {
+            this.reducers[key] = _reducers[key] ?? defaultReducer;
+        }
     }
 
     eventCount = 0;
@@ -118,9 +130,9 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
         return `${++this.eventCount}-${new Date().toISOString()}`;
     }
 
-    getState(stateId: string) {
+    getState(stateId: keyof Type) {
         if (!this.states[stateId]) {
-            throw new Error(`no state set: ${stateId}`);
+            throw new Error(`no state set: ${stateId as string}`);
         }
         return this.states[stateId];
     }
@@ -159,12 +171,12 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
         this.emitter.emit('postCommit', event);
     }
 
-    getDispatcher(stateId: string): Dispatcher<Type> {
-        if (!this.reducers[stateId]) {
-            throw new Error(`no reducer set: ${stateId}`);
+    getDispatcher(stateId: keyof Type): Dispatcher<Type[keyof Type]> {
+        if (!this.reducers[stateId as string]) {
+            throw new Error(`no reducer set: ${stateId as string}`);
         }
-        return async (action: Action) => {
-            this.dispatch(stateId, action);
+        return (action: Action) => {
+            this.dispatch(stateId as string, action);
         };
     }
 
@@ -226,3 +238,45 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
         };
     }
 }
+
+const globalStores: Record<string, Store> = {};
+
+export const getStore = (_id?: string): Store => {
+    const id = _id ?? 'default';
+    if (!globalStores[id]) {
+        throw new Error(`dinotools.state: store not found: ${id}`);
+    }
+
+    return globalStores[id];
+};
+
+export const setStore = (store: Store, _id?: string) => {
+    const id = _id ?? 'default';
+    if (globalStores[id]) {
+        throw new Error(`dinotools.state: store already exists: ${id}`);
+    }
+
+    globalStores[id] = store;
+    return store;
+};
+
+/**
+ * React hook to fetch current state and dispatcher from a global store. New
+ * changes to store state trigger React state change. Note that this means
+ * anyone with access to this state's dispatcher can influence the component
+ * using this hook. The React state value uses the store's eventStamp to avoid
+ * potential duplication of event processing on this specific hook instance.
+ *
+ * @return {[FormState, Dispatcher<FormState>, BatchDispatcher]}
+ */
+export const useStoreState = (stateId: string, storeId?: string) => {
+    const [s, setState] = useState('-');
+    const store = getStore(storeId);
+
+    const unsub = store.listenFor(stateId, (payload) => {
+        setState(payload.eventStamp);
+    });
+    useEffect(() => unsub);
+
+    return [store.getState(stateId), store.getDispatcher(stateId), store.getBatchDispatcher()];
+};
