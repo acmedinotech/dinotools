@@ -1,4 +1,13 @@
-import { ActionBatch, StoreEventAction, StoreEventBatchAction, StoreImpl } from './index';
+import {
+    ActionBatch,
+    keyItemAdd,
+    keyItemMove,
+    keyItemReducer,
+    keyItemRemove,
+    StoreEventAction,
+    StoreEventBatchAction,
+    StoreImpl,
+} from './index';
 
 describe('package: state', () => {
     describe('class StoreImpl', () => {
@@ -134,6 +143,54 @@ describe('package: state', () => {
 
             unsub1();
             unsub2();
+        });
+    });
+
+    describe('keyItem interactions', () => {
+        const store = new StoreImpl(
+            {
+                items: { item1: { name: 'Item 1' } },
+            },
+            {
+                items: keyItemReducer,
+            }
+        );
+
+        const events: Record<string, number> = {};
+        const dispatcher = store.getDispatcher('items');
+
+        describe('#keyItemReducer()', () => {
+            it('adds an item', () => {
+                dispatcher(keyItemAdd('item2', { name: 'Item 2' }));
+                const state = store.getState('items');
+                expect(state['item2']).toEqual({ name: 'Item 2' });
+                expect(state['__subEvents']).toEqual({ item2: 'add' });
+            });
+            it('moves an item', () => {
+                dispatcher(keyItemMove('item2', 'item2_a'));
+                const state = store.getState('items');
+                expect(state['item2_a']).toEqual({
+                    name: 'Item 2',
+                });
+                expect(state['item2']).toBeFalsy();
+                expect(state['__subEvents']).toEqual({ item2_a: 'add', item2: 'remove' });
+            });
+            it('moves and updates an item', () => {
+                dispatcher(keyItemMove('item2_a', 'item2_b', { newKey: true }));
+                const state = store.getState('items');
+                expect(state['item2_b']).toEqual({
+                    name: 'Item 2',
+                    newKey: true,
+                });
+                expect(state['item2_a']).toBeFalsy();
+                expect(state['__subEvents']).toEqual({ item2_b: 'add', item2_a: 'remove' });
+            });
+            it('removes an item', () => {
+                dispatcher(keyItemRemove('item2_b'));
+                const state = store.getState('items');
+                expect(state['item2_b']).toBeFalsy();
+                expect(state['__subEvents']).toEqual({ item2_b: 'remove' });
+            });
         });
     });
 });

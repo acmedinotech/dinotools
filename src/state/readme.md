@@ -85,6 +85,53 @@ The way this works is as follows:
 
 So in the above example, a state update is emitted once for `userInfo` and `pageInfo`. Instead of a single action, you receive all the actions related to that `stateId` as `batchActions`. `batchStateIds` holds all the states affected.
 
+## `keyItemReducer`: item-specific state update loop via __subEvents
+
+In a moderately complex app, it might be helpful to use the store to map specific items by key. Not only that, but dispatches are able to emit item-specific events. For the first part, we can use the `keyItemReducer`. For the second part, we'll inject a magic property `__subEvents` to emit lower-level events.
+
+Let's walk through some code to directly explain what's happening.
+
+```javascript
+// Part 1: performing operations in store. special metadata will be automatically injected
+type Item = {name: string}
+const store = new StoreImpl<{items: Record<string,Item>}>({
+    items: {}
+}, { items: keyItemReducer });
+
+// let's add item1
+store.dispatch(keyItemAdd('item1', {name: 'Item 1'}));
+// state is now {item1: {name: 'Item 1', __subEvents: {item1: 'add'}}}
+
+// let's move item1 to item1_a
+store.dispatch(keyItemMove('item1', 'item1_a'));
+// state is now {item1_a: {name: 'Item 1', __subEvents: {item1_a: 'add', item1: 'remove'}}}
+
+// let's move item1_a to item1_b and replace its value
+store.dispatch(keyItemMove('item1_a', 'item1_b', {name: 'Item 1B'}));
+// state is now {item1_b: {name: 'Item 1B', __subEvents: {item1_b: 'add', item1_a: 'remove'}}}
+
+// let's delete item1_a
+store.dispatch(keyItemRemove('item1_b'));
+// state is now {item1_b: {__subEvents: {item1_b: 'remove'}}}
+
+// Part 2: listening for specific info
+// the convention here is `$stateId/$key` -- each key in `__subEvents` will generate a subevent
+store.listenFor('items/item1', () => {})
+store.listenFor('items/item1_a', () => {})
+store.listenFor('items/item1_b', () => {})
+
+// Part 3: interacting in React component
+// operations here essentially add/update a row. will ignore general `items` updates
+const handler = useStateStore(`items/${props.id}`)
+// helper class that wraps the dispatches above
+const keyItem = handler.getKeyItem(props.id)
+
+// triggers state changes
+keyItem.add({name: 'whatever'})
+keyItem.move('newId', {name: 'whatever'});
+keyItem.remove();
+```
+
 ## Lifecycle Hooks
 
 To facilitate more complex workflows, the store divides up work into the following lifecycle events which you can hook into:

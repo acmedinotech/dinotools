@@ -9,7 +9,11 @@ export type ActionBatch<Type = Record<string, any>> = { stateId: string; action:
  * Gets a snapshot of whole application data, and returns current/modified `states[stateId]`.
  * If modifications occur, **you must return a new object**, otherwise, changes will be ignored.
  */
-export type Reducer<Type = Record<string, any>> = (stateId: string, action: any, states: Type) => Type[keyof Type];
+export type Reducer<Type = Record<string, any>, Act = any> = (
+    stateId: string,
+    action: Action<Act>,
+    states: Type
+) => Type[keyof Type];
 export type Dispatcher<Type = any> = (action: Action<Type>) => void;
 export type BatchDispatcher<Type = any> = (actions: ActionBatch<Type>) => void;
 
@@ -106,8 +110,78 @@ class Emitter {
  * allows for a simple merging of existing state with action. This makes the dispatch for the
  * state operate like React's `useState()`
  */
-const defaultReducer = (stateId: string, action: any, states: any) => {
+export const defaultReducer = (stateId: string, action: any, states: any) => {
     return { ...states[stateId], ...action };
+};
+
+export const KEY_ITEM_SUBEVENTS = '__subEvents';
+
+export type KeyItemAction = Action<{
+    /**
+     * Creates or updates an item with this key. Emits `${__key}` subevent.
+     */
+    __key?: string;
+    /**
+     * If `__key` is given, `__oldKey` will remove the item at that key if it exists.
+     * Emits `${__oldKey}` subevent.
+     */
+    __oldKey?: string;
+    /**
+     * Removes `__deleteKey` if it exists. Emits `${__deleteKey}` subevent
+     */
+    __deleteKey?: string;
+}>;
+
+/**
+ * This reducer provides a convenient way to store/edit items by key and only get
+ * notified for specific items.
+ */
+export const keyItemReducer: Reducer<Record<string, any>, KeyItemAction> = (stateId: string, action, states: any) => {
+    const nstate = { ...states[stateId] };
+
+    const { type, __key, __oldKey, __deleteKey, ...rest } = action;
+    const __subEvents: any = {};
+
+    if (__key) {
+        __subEvents[__key] = 'add';
+        let item = rest;
+        if (__oldKey) {
+            __subEvents[__oldKey] = 'remove';
+            const oldItem = nstate[__oldKey] ?? {};
+            delete nstate[__oldKey];
+
+            // merge old with new
+            item = { ...oldItem, ...rest };
+        }
+
+        nstate[__key] = { ...item };
+        nstate['__subEvents'] = __subEvents;
+    } else if (__deleteKey) {
+        __subEvents[__deleteKey] = 'remove';
+        delete nstate[__deleteKey];
+        nstate['__subEvents'] = __subEvents;
+    }
+
+    return nstate;
+};
+
+export const keyItemAdd = (id: string, item: any) => {
+    return {
+        __key: id,
+        ...item,
+    };
+};
+
+export const keyItemMove = (oldId: string, newId: string, mergeItem?: any) => {
+    return {
+        __key: newId,
+        __oldKey: oldId,
+        ...(mergeItem ?? {}),
+    };
+};
+
+export const keyItemRemove = (id: string) => {
+    return { __deleteKey: id };
 };
 
 /**
