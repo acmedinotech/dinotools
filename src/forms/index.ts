@@ -1,4 +1,4 @@
-import { Action, Dispatcher, getStore, Reducer, Store } from '../state';
+import { Action, Dispatcher, getStore, KeyItemHandler, Reducer, Store } from '../state';
 import { useState, useEffect, SyntheticEvent } from 'react';
 
 export const FORM_RESET = 'form.reset';
@@ -306,6 +306,10 @@ export class FormHandler {
             this.doOperation(op, params);
         };
     }
+
+    getKeyItem(id: string) {
+        return new KeyItemHandler(this.state, this.dispatcher, id);
+    }
 }
 
 export type UseStateFormParams = {
@@ -319,14 +323,15 @@ export type UseStateFormParams = {
     validators?: FormValidator[];
 };
 
-export const useStoreForm = (stateId: string, params: UseStateFormParams): FormHandler => {
+export const useStoreForm = (stateEventId: string, params: UseStateFormParams = {}): FormHandler => {
+    const [stateId, subEventId] = stateEventId.split('/');
     const s = getStore(params.storeId);
     const state = s.getState(stateId);
     const dispatcher = s.getDispatcher(stateId);
 
     const [_s, _ss] = useState(state);
 
-    const unsub = s.listenFor(stateId, (payload) => {
+    const unsub = s.listenFor(stateEventId, (payload) => {
         _ss(payload.states[stateId]);
     });
 

@@ -350,6 +350,65 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
     }
 }
 
+/**
+ * Allows convenient manipulation of a specific state object having a unique `itemId`.
+ * This most closely mimics `useState()` within a React component.
+ */
+export class KeyItemHandler {
+    state: any;
+    dispatcher: Dispatcher<any>;
+    itemId: string;
+
+    constructor(state: any, dispatcher: Dispatcher, itemId: string) {
+        this.state = state;
+        this.dispatcher = dispatcher;
+        this.itemId = itemId;
+    }
+
+    /**
+     * Returns the state value if it exists, or `defVal` otherwise.
+     * @param defVal
+     * @returns
+     */
+    get(defVal: any = {}) {
+        if (this.state[this.itemId]) {
+            return this.state[this.itemId];
+        } else {
+            return defVal;
+        }
+    }
+
+    /**
+     * Creates/updates `itemId` with specific data.
+     */
+    add(data: any) {
+        this.dispatcher(keyItemAdd(this.itemId, data));
+    }
+
+    /**
+     * Creates/updates `itemId` but merges input data into existing value.
+     */
+    merge(data: any) {
+        this.add({ ...this.get(), ...data });
+    }
+
+    /**
+     * Rename `itemId` and optionally override the value completely.
+     */
+    move(newId: string, data?: any) {
+        const oldId = this.itemId;
+        this.itemId = newId;
+        this.dispatcher(keyItemMove(oldId, newId, data));
+    }
+
+    /**
+     * Removes `itemId`.
+     */
+    remove() {
+        this.dispatcher(keyItemRemove(this.itemId));
+    }
+}
+
 const globalStores: Record<string, Store> = {};
 
 export const getStore = (_id?: string): Store => {
@@ -380,11 +439,12 @@ export const setStore = (store: Store, _id?: string) => {
  *
  * @return {[FormState, Dispatcher<FormState>, BatchDispatcher]}
  */
-export const useStoreState = (stateId: string, storeId?: string) => {
+export const useStoreState = (stateEventId: string, storeId?: string) => {
+    const [stateId, subEventId] = stateEventId.split('/');
     const [s, setState] = useState('-');
     const store = getStore(storeId);
 
-    const unsub = store.listenFor(stateId, (payload) => {
+    const unsub = store.listenFor(stateEventId, (payload) => {
         setState(payload.eventStamp);
     });
     useEffect(() => unsub);
