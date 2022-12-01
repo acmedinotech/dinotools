@@ -14,8 +14,8 @@ export type Reducer<Type = Record<string, any>, Act = any> = (
     action: Action<Act>,
     states: Type
 ) => Type[keyof Type];
-export type Dispatcher<Type = any> = (action: Action<Type>) => void;
-export type BatchDispatcher<Type = any> = (actions: ActionBatch<Type>) => void;
+export type Dispatcher<Type = any> = (action: Action<Type>, preCallback?: Function) => void;
+export type BatchDispatcher<Type = any> = (actions: ActionBatch<Type>, preCallback?: Function) => void;
 
 export type StoreEvent<Type = any> = {
     eventId: string;
@@ -266,7 +266,8 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
         if (!this.reducers[stateId as string]) {
             throw new Error(`no reducer set: ${stateId as string}`);
         }
-        return (action: Action) => {
+        return (action: Action, pre?: Function) => {
+            pre?.();
             this.dispatch(stateId as string, action);
         };
     }
@@ -335,7 +336,8 @@ export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
     }
 
     getBatchDispatcher(): BatchDispatcher<Type> {
-        return (actions: ActionBatch) => {
+        return (actions: ActionBatch, pre?: Function) => {
+            pre?.();
             this.batchDispatch(actions);
         };
     }
