@@ -47,7 +47,7 @@ export type HookContext = {
 };
 export type HookHandler = (context: HookContext, event: StoreEvent) => Promise<any>;
 
-export interface Store<Type = Record<string, any>> {
+export interface Store<Type = any> {
     /**
      * Returns current snapshot of the given `stateId`.
      * @param stateId
@@ -188,7 +188,7 @@ export const keyItemRemove = (id: string) => {
 /**
  *
  */
-export class StoreImpl<Type = Record<string, any>> implements Store<Type> {
+export class StoreImpl<Type = any> implements Store<Type> {
     states: Type;
     reducers: Record<string, Reducer> = {};
     emitter = new Emitter();
@@ -413,13 +413,13 @@ export class KeyItemHandler {
 
 const globalStores: Record<string, Store> = {};
 
-export const getStore = (_id?: string): Store => {
+export const getStore = <T extends Record<string, any>>(_id?: string): Store => {
     const id = _id ?? 'default';
     if (!globalStores[id]) {
         throw new Error(`dinotools.state: store not found: ${id}`);
     }
 
-    return globalStores[id];
+    return globalStores[id] as Store<T>;
 };
 
 export const setStore = (store: Store, _id?: string) => {
@@ -441,10 +441,10 @@ export const setStore = (store: Store, _id?: string) => {
  *
  * @return {[FormState, Dispatcher<FormState>, BatchDispatcher]}
  */
-export const useStoreState = (stateEventId: string, storeId?: string) => {
+export const useStoreState = <T extends any = any>(stateEventId: string, storeId?: string) => {
     const [stateId, subEventId] = stateEventId.split('/');
     const [s, setState] = useState('-');
-    const store = getStore(storeId);
+    const store = getStore<T>(storeId);
 
     const unsub = store.listenFor(stateEventId, (payload) => {
         setState(payload.eventStamp);
