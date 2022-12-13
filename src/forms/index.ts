@@ -1,4 +1,4 @@
-import { Action, Dispatcher, getStore, KeyItemHandler, Reducer, Store } from '../state';
+import { Action, Dispatcher, getStore, KeyItemHandler, KEY_SUBEVENTS, Reducer, Store } from '../state';
 import { useState, useEffect, SyntheticEvent } from 'react';
 
 export const FORM_RESET = 'form.reset';
@@ -141,6 +141,17 @@ export const setErrors = (errors: FormState['errors']) => {
 };
 
 /**
+ * Creates a map of `update.${key}` subEvents
+ */
+export const generateUpdateSubEvents = (fields: Record<string, any>) => {
+    const map: Record<string, any> = {};
+    for (const key in fields) {
+        map[`update.${key}`] = fields[key];
+    }
+    return map;
+};
+
+/**
  * @todo update `status` based on actions
  */
 export const formReducer: Reducer<Record<string, any>> = (stateId, action, states) => {
@@ -149,9 +160,19 @@ export const formReducer: Reducer<Record<string, any>> = (stateId, action, state
         return { values: {}, errors: {}, status: 'clean', ...props } as FormState;
     } else if (type === FORM_UPDATE_FIELD) {
         const { field, value } = props;
-        return { ...states[stateId], status: 'dirty', values: { ...states[stateId].values, [field]: value } };
+        return {
+            ...states[stateId],
+            status: 'dirty',
+            values: { ...states[stateId].values, [field]: value },
+            [KEY_SUBEVENTS]: generateUpdateSubEvents({ [field]: value }),
+        };
     } else if (type === FORM_UPDATE_FIELDS) {
-        return { ...states[stateId], status: 'dirty', values: { ...states[stateId].values, ...props.values } };
+        return {
+            ...states[stateId],
+            status: 'dirty',
+            values: { ...states[stateId].values, ...props.values },
+            [KEY_SUBEVENTS]: generateUpdateSubEvents(props.values),
+        };
     } else if (type === FORM_SET_ERRORS) {
         return { ...states[stateId], errors: action.errors, locked: false, execOp: undefined, execOpParams: undefined };
     } else if (type === FORM_EXEC_OP) {
@@ -330,7 +351,6 @@ export const useStoreForm = (stateEventId: string, params: UseStateFormParams = 
     const dispatcher = s.getDispatcher(stateId);
 
     const [_s, _ss] = useState(state);
-
     const unsub = s.listenFor(stateEventId, (payload) => {
         _ss(payload.states[stateId]);
     });
