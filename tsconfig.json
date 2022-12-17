@@ -17,6 +17,7 @@
         "skipDefaultLibCheck": true,
         "baseUrl": ".",
         "paths": {
+            "dinotools/*": ["src/*"],
             "state": ["src/state/index.ts"]
         }
     },
