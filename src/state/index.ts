@@ -45,7 +45,7 @@ export type HookContext = {
 };
 export type HookHandler = (context: HookContext, event: StoreEvent) => Promise<any>;
 
-export interface Store<Type = any> {
+export interface Store<Type extends Record<string, any>> {
     /**
      * Returns current snapshot of the given `stateId`.
      * @param stateId
@@ -186,7 +186,7 @@ export const keyItemRemove = (id: string) => {
 /**
  *
  */
-export class StoreImpl<Type = any> implements Store<Type> {
+export class StoreImpl<Type extends Record<string, any>> implements Store<Type> {
     states: Type;
     reducers: Record<string, Reducer> = {};
     emitter = new Emitter();
@@ -229,7 +229,7 @@ export class StoreImpl<Type = any> implements Store<Type> {
             return;
         }
 
-        this.states[stateId] = newState;
+        this.states[stateId as keyof Type] = newState;
 
         const event = {
             eventId: stateId,
@@ -293,7 +293,7 @@ export class StoreImpl<Type = any> implements Store<Type> {
                 pushAction(stateId, action);
                 const lastSubEvents = newStates[stateId][KEY_SUBEVENTS] ?? {};
                 const newSubEvents = newState[KEY_SUBEVENTS] ?? {};
-                newStates[stateId] = newState;
+                newStates[stateId as keyof Type] = newState;
                 newStates[stateId][KEY_SUBEVENTS] = { ...lastSubEvents, ...newSubEvents };
             }
         }
@@ -409,9 +409,9 @@ export class KeyItemHandler {
     }
 }
 
-const globalStores: Record<string, Store> = {};
+const globalStores: Record<string, Store<any>> = {};
 
-export const getStore = <T extends Record<string, any>>(_id?: string): Store => {
+export const getStore = <T extends Record<string, any>>(_id?: string): Store<T> => {
     const id = _id ?? 'default';
     if (!globalStores[id]) {
         throw new Error(`dinotools.state: store not found: ${id}`);
@@ -420,7 +420,7 @@ export const getStore = <T extends Record<string, any>>(_id?: string): Store => 
     return globalStores[id] as Store<T>;
 };
 
-export const setStore = (store: Store, _id?: string) => {
+export const setStore = <T extends Record<string, any>>(store: Store<T>, _id?: string) => {
     const id = _id ?? 'default';
     if (globalStores[id]) {
         throw new Error(`dinotools.state: store already exists: ${id}`);
@@ -449,5 +449,5 @@ export const useStoreState = <T extends any = any>(stateEventId: string, storeId
     });
     useEffect(() => unsub);
 
-    return [store.getState(stateId), store.getDispatcher(stateId), store.getBatchDispatcher()];
+    return [store.getState(stateId as keyof T), store.getDispatcher(stateId as keyof T), store.getBatchDispatcher()];
 };
