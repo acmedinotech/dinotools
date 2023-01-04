@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 
-export type Action<Type = Record<string, any>> = { type?: string; [key: string]: any };
-export type ActionBatch<Type = Record<string, any>> = { stateId: string; action: Action<Type> }[];
+export type GenericState = Record<string, any>;
+export type Action<Type = GenericState> = { type?: string; [key: string]: any };
+export type ActionBatch<Type = GenericState> = { stateId: string; action: Action<Type> }[];
 
 /**
  * Gets a snapshot of whole application data, and returns current/modified `states[stateId]`.
  * If modifications occur, **you must return a new object**, otherwise, changes will be ignored.
  */
-export type Reducer<Type = Record<string, any>, Act = any> = (
+export type Reducer<Type = GenericState, Act = any> = (
     stateId: string,
     action: Action<Act>,
     states: Type
@@ -45,7 +46,7 @@ export type HookContext = {
 };
 export type HookHandler = (context: HookContext, event: StoreEvent) => Promise<any>;
 
-export interface Store<Type extends Record<string, any>> {
+export interface Store<Type extends GenericState> {
     /**
      * Returns current snapshot of the given `stateId`.
      * @param stateId
@@ -135,7 +136,7 @@ export type KeyItemAction = Action<{
  * This reducer provides a convenient way to store/edit items by key and only get
  * notified for specific items.
  */
-export const keyItemReducer: Reducer<Record<string, any>, KeyItemAction> = (stateId: string, action, states: any) => {
+export const keyItemReducer: Reducer<GenericState, KeyItemAction> = (stateId: string, action, states: any) => {
     const nstate = { ...states[stateId] };
 
     const { type, __key, __oldKey, __deleteKey, ...rest } = action;
@@ -186,7 +187,7 @@ export const keyItemRemove = (id: string) => {
 /**
  *
  */
-export class StoreImpl<Type extends Record<string, any>> implements Store<Type> {
+export class StoreImpl<Type extends GenericState> implements Store<Type> {
     states: Type;
     reducers: Record<string, Reducer> = {};
     emitter = new Emitter();
@@ -411,7 +412,7 @@ export class KeyItemHandler {
 
 const globalStores: Record<string, Store<any>> = {};
 
-export const getStore = <T extends Record<string, any>>(_id?: string): Store<T> => {
+export const getStore = <T extends GenericState>(_id?: string): Store<T> => {
     const id = _id ?? 'default';
     if (!globalStores[id]) {
         throw new Error(`dinotools.state: store not found: ${id}`);
@@ -420,7 +421,7 @@ export const getStore = <T extends Record<string, any>>(_id?: string): Store<T> 
     return globalStores[id] as Store<T>;
 };
 
-export const setStore = <T extends Record<string, any>>(store: Store<T>, _id?: string) => {
+export const setStore = <T extends GenericState>(store: Store<T>, _id?: string) => {
     const id = _id ?? 'default';
     if (globalStores[id]) {
         throw new Error(`dinotools.state: store already exists: ${id}`);
@@ -439,7 +440,7 @@ export const setStore = <T extends Record<string, any>>(store: Store<T>, _id?: s
  *
  * @return {[FormState, Dispatcher<FormState>, BatchDispatcher]}
  */
-export const useStoreState = <T extends any = any>(stateEventId: string, storeId?: string) => {
+export const useStoreState = <T extends GenericState = GenericState>(stateEventId: string, storeId?: string) => {
     const [stateId, subEventId] = stateEventId.split('/');
     const [s, setState] = useState('-');
     const store = getStore<T>(storeId);
